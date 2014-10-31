@@ -1,0 +1,370 @@
+%\VignetteEngine{knitr::knitr}
+%\VignetteIndexEntry{Analysis of NOMe-seq data using the aaRon package}
+%\VignettePackage{aaRon}
+
+\documentclass{article}
+<<style-knitr, eval=TRUE, echo=FALSE, results="asis">>=
+BiocStyle::latex()
+@
+
+\usepackage{xcolor}
+\usepackage{subfig}
+\usepackage{hyperref}
+\begin{document}
+
+\definecolor{bashblue}{HTML}{C0E0E6}
+\definecolor{Rgrey}{rgb}{.97, .97, .97}
+
+<<setup, include=FALSE, cache=FALSE>>=
+library(knitr)
+opts_chunk$set(out.width="0.8\\maxwidth",fig.align="center")
+@
+
+\title{Analysis of NOMe-seq data using the aaRon R package}
+\author{Aaron Statham \email{a.statham@garvan.org.au}}
+
+\maketitle
+
+\tableofcontents
+
+\section{Introduction}
+
+The NOMe-seq technique\cite{kelly2012} is an extension of whole genome bisulfite sequencing\cite{lister2009} (WGBS) which enables the simultaneous assaying of DNA methylation and nucleosome occupancy at single nucleotide resolution. This vignette demonstrates tools to analyse and visualise the NOMe-seq profiles. This is illustrated using 4 human cell lines, work which was recently published in Genome Research\cite{taberlay2014}.
+
+\subsection{The NOMe-seq assay}
+
+NOMe-seq stands for \emph{\underline{N}ucleosome \underline{O}ccupancy and \underline{Me}thylation \underline{seq}uencing} and enables the simultaneous interrogation of endogenous DNA methylation and nucleosome occupancy/DNA accessibility at a single nucleotide level. Endogenous methylcytosine in mammalian cells occurs almost exclusively in a CpG dinucleotide context. The NOMe-seq technique leverages this through the treatment of isolated cell nuclei with the GpC methyltransferase \textit{M.CviPI}, adding a methyl group to the cytosines in GpC dinucleotides that are accessible to the enzyme, providing a methylation footprint of non-nucleosomal DNA. This treated DNA is then isolated and undergoes WGBS to determine the methylation status of every cytosine in the genome at single basepair resolution.
+
+The endogenous and exogenous, enzyme added methylation is separable post-WGBS by whether the methylcysotines occur in a CpG or GpC sequence context. GpCpG sites are the exception, as the middle cytosine methylation is in both a CpG and GpC context; these sites are removed from the analysis. Additionally \textit{M.CviPI} has a low ability to methylate CpCpG sites; these are also eliminated from the analysis.
+
+This leaves \textbf{GCH} sites (a GpC \textit{not} followed by a G; 123,015,862 present in the human genome hg19) available for the nucleosome occupancy/accessibility readout, and \textbf{WCG} sites (a CpG \textit{not} preceded by a C or G; 20,475,403 present in the human genome hg19) available for endogenous methylation analysis.
+
+\subsection{How to use this manual}
+
+This document is split into two sections:
+
+\begin{itemize}
+  \item \textcolor{BiocBlue}{Section 2} - the procedure to download, align, extract methylation/accessibility data and then join multiple samples into \file{bigTable}s of \textbf{GCH} and \textbf{WCG} methylation. These chunks of code are to be executed in \software{bash} and are highlighted in \colorbox{bashblue}{blue}. If desired, this may be bypassed and previously analysed tables downloaded\cite{Statham:12454} as described in \textcolor{BiocBlue}{Section 2.7}.
+  \item \textcolor{BiocBlue}{Section 3} - the importation and analysis of processed NOMe-seq data, to be performed in \R{}. These chunks of code are highlighteed in \colorbox{Rgrey}{grey}.
+\end{itemize}
+
+\section{Processing of raw NOMe-seq data into tables of CpG and GpC methylation}
+
+This section details the pre-processing of raw NOMe-seq data. The sequencing data we are using has been deposited at the \href{http://www.ncbi.nlm.nih.gov/Traces/sra/?study=SRP041828}{Sequence Read Archive} (SRA). We will download the raw data from the SRA, convert to the \file{fastq} format, align the reads to the human genome (build hg19) using \software{bwameth}\cite{bwameth,bwamethrepo}, extract methylation counts at GCH and WCG sites using \software{BisSNP}\cite{liu2012} and construct the final \file{bigTable}s ready for downstream analysis in \R{}.
+
+\subsection{Installation of prerequisites}
+
+Firstly we must install the required tools for the analysis. These instructions have been tested on two variants of linux (Ubuntu 14.04 and CentOS 6.2) and require git and the python package manager pip.
+
+<<prereqs, engine='highlight', engine.opts='-S bash -O latex', background='#C0E0E6'>>=
+# NOMe-seq-analysis - files required for this example analysis
+# We will use this repository as the working directory for all downstream analysis
+git clone https://github.com/astatham/NOMe-seq-analysis
+cd NOMe-seq-analysis
+
+# bwameth and its dependency toolshed - from https://github.com/brentp/bwa-meth
+pip install toolshed
+git clone https://github.com/brentp/bwa-meth.git
+
+# BisSNP
+wget http://ufpr.dl.sourceforge.net/project/bissnp/BisSNP-0.82.2/BisSNP-0.82.2.jar
+
+# bwa
+wget http://softlayer-sng.dl.sourceforge.net/project/bio-bwa/bwa-0.7.10.tar.bz2
+tar -jxvf bwa-0.7.10.tar.bz2
+rm bwa-0.7.10.tar.bz2
+cd bwa-0.7.10; make; cd ..
+
+# samtools
+wget http://downloads.sourceforge.net/project/samtools/samtools/1.1/samtools-1.1.tar.bz2
+tar -jxvf samtools-1.1.tar.bz2
+rm samtools-1.1.tar.bz2
+cd samtools-1.1; make; cd ..
+
+# picard
+wget -O picard-tools-1.122.zip \
+    https://github.com/broadinstitute/picard/releases/download/1.122/picard-tools-1.122.zip
+unzip picard-tools-1.122.zip
+rm picard-tools-1.122.zip
+
+# R and required packages
+wget http://cran.r-project.org/src/base/R-3/R-3.1.1.tar.gz
+tar -zxvf R-3.1.1.tar.gz
+rm R-3.1.1.tar.gz
+cd R-3.1.1
+./configure
+make
+bin/R -e 'source("http://bioconductor.org/biocLite.R"); biocLite(c("GenomicRanges", 
+  "BSgenome.Hsapiens.UCSC.hg19","TxDb.Hsapiens.UCSC.hg19.knownGene", "AnnotationHub",
+  "Repitools", "devtools", "ggplot2", "zoo", "minfi", "reshape2", "data.table", "R.utils"))'
+bin/R -e 'devtools::install_github("astatham/aaRon")'
+cd ..
+
+# Set environmental variables & paths
+BWAMETH="$PWD"/bwa-meth
+PICARD="$PWD"/picard-tools-1.122
+PATH="$PWD"/R-3.1.1/bin:"$PWD"/bwa-0.7.10:"$PWD"/samtools-1.1:$PATH
+@
+
+\subsection{Creating an index of hg19 for alignment}
+
+We need to download a copy of the hg19 genome sequence from UCSC and create a \software{bwameth} index so that we can align our NOMe-seq reads to it.
+
+<<indexing, engine='highlight', engine.opts='-S bash -O latex', background='#C0E0E6'>>=
+mkdir index
+cd index
+wget http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/chromFa.tar.gz
+tar -zxvf chromFa.tar.gz
+rm chromFa.tar.gz
+for i in `seq 1 22` X Y M # Only include chr1-22, X, Y and M in index
+do
+    cat chr"$i".fa >> hg19.fa
+done
+samtools faidx hg19.fa
+"$BWAMETH"/bwameth.py index hg19.fa
+cd ..
+@
+
+\subsection{Downloading raw data from the Short Read Archive}
+
+Now we download the raw data from the SRA. As each sample was sequenced over multiple lanes, there are more than one \file{sra} file per cell line. The mapping between \file{sra} files and cell lines is  in the supplied \file{files.txt}. The code below downloads the \file{sra}s with filenames corresponding to the cell line, converts \file{sra}s to \file{fastq} pairs and concatenates the replicate lanes into a single \file{fastq} pair per cell line, ready for alignment.
+
+<<fastq, engine='highlight', engine.opts='-S bash -O latex', background='#C0E0E6'>>=
+mkdir fastq
+cd fastq
+# download sra files using gnu parallel to perform downloads simultaneously
+# can adjust the '-j' parameter to change the number of commands executed in parallel
+cat files.txt | parallel --gnu --colsep ' ' -j 10 wget -O {2} {1}
+
+# extract out fastq.gzs, and concatenate by cell line
+ls *.sra | parallel --gnu -j 10 fastq-dump --split-files --gzip -F {}
+
+parallel --gnu -j 4 "cat {}_?_1.fastq.gz > {}_1.fastq.gz" ::: HMEC MCF7 PrEC PC3
+parallel --gnu -j 4 "cat {}_?_2.fastq.gz > {}_2.fastq.gz" ::: HMEC MCF7 PrEC PC3
+
+# remove unneeded files
+rm *.sra *_?_?.fastq.gz
+cd ..
+@
+
+\subsection{Alignment of reads to the human genome}
+
+Next we align the \file{fastq} pairs of each sample to hg19 using \software{bwameth}. This step may take an extended amount of time as we are aligning 1.1 billion read pairs, so increasing the number of alignment threads (--threads parameter) or performing the alignment for each samples in parallel on a computational cluster is advisable. After alignment is complete, PCR duplicate reads are marked by \software{picard MarkDuplicates}.
+
+<<alignment, engine='highlight', engine.opts='-S bash -O latex', background='#C0E0E6'>>=
+mkdir bams
+for sample in HMEC MCF7 PrEC PC3
+do
+  # align
+  "$BWAMETH"/bwameth.py --threads 32 --prefix bams/"$sample".align \
+    --read-group @RG\\tID:"$sample"\\tSM:"$sample" --reference index/hg19.fa \
+    fastq/"$sample"_1.fastq.gz fastq/"$sample"_2.fastq.gz
+
+  # mark duplicates
+  java -jar "$PICARD"/MarkDuplicates.jar I=bams/"$sample".align.bam O=bams/"$sample".bam  \
+    M=bams/"$sample".metrics REMOVE_DUPLICATES=FALSE AS=TRUE CREATE_INDEX=TRUE
+done
+@
+
+\subsection{Extraction of methylation counts}
+
+Now we call \software{BisSNP} via \software{bwameth tabulate} once per cell line \file{bam} file. \software{BisSNP} is a bisulfite aware genotyper extension to \software{GATK}\cite{depristo2011}, and exports methylation and genotype results in \file{vcf} format, which \software{bwameth tabulate} then converts into a simpler \file{bed-like} format. Again, this process can take an extended amount of time, so performing this step for all samples in parallel on a computational cluster is recommended. We then use the \R{} script \file{bissnp{\_}to{\_}tsv{\_}nome.R} to separate the GCH and WCG methylation calls into separate files.
+
+<<extraction, engine='highlight', engine.opts='-S bash -O latex', background='#C0E0E6'>>=
+for sample in HMEC MCF7 PrEC PC3
+do
+  # extract methylation calls
+  "$BWAMETH"/bwameth.py tabulate --bissnp BisSNP-0.82.2.jar --trim 4,4 --map-q 60 \
+    --threads 32 --prefix "$sample".bissnp --reference index/hg19.fa \
+    --nome bams/"$sample".bam
+
+  # tabulate methylation calls
+  R -f bissnp_to_tsv_nome.R --args "$sample" hg19
+  gzip *.vcf *.bed
+done
+@
+
+\subsection{Combining samples into big tables}
+
+Finally we combine the individual samples GCH and WCG tables into a single \file{bigTable} per type of methylation.
+
+<<bigtable, engine='highlight', engine.opts='-S bash -O latex', background='#C0E0E6'>>=
+paste <(gunzip -c HMEC.GCH.tsv.gz) <(gunzip -c MCF7.GCH.tsv.gz | cut -f3,4) \
+                                   <(gunzip -c PrEC.GCH.tsv.gz | cut -f3,4) \
+                                   <(gunzip -c PC3.GCH.tsv.gz | cut -f3,4) \
+      > bigTable.GCH.tsv
+paste <(gunzip -c HMEC.CpGs.tsv.gz) <(gunzip -c MCF7.CpGs.tsv.gz | cut -f3,4) \
+                                    <(gunzip -c PrEC.CpGs.tsv.gz | cut -f3,4) \
+                                    <(gunzip -c PC3.CpGs.tsv.gz | cut -f3,4) \
+      > bigTable.WCG.tsv
+@
+
+This completes the initial processing of raw NOMe-seq data into tables of methylation and accessibility for four cell lines. Alternatively, already processed tables from this same starting data have been processed and are downloadable\cite{Statham:12454}.
+
+\subsection{Downloading of previously analysed tables for this experiment}
+<<downloadzenodo, engine='highlight', engine.opts='-S bash -O latex', background='#C0E0E6'>>=
+wget http://zenodo.org/record/12454/files/bigTable.GCH.tsv.gz
+wget http://zenodo.org/record/12454/files/bigTable.WCG.tsv.gz
+gunzip bigTable.GCH.tsv.gz bigTable.WCG.tsv.gz
+@
+
+These \file{bigTable}s are now ready to be imported into \R{} and analysed using \Githubpkg{astatham/aaRon} in the next section.
+
+\section{Analysis of processed NOMe-seq data using \Githubpkg{astatham/aaRon}}
+
+This section details the downstream analysis of the NOMe-seq data we just finished processing (or downloading). All of the following instructions are to be performed within the \R{} environment.
+
+\subsection{Importing NOMe-seq data}
+
+The package \Githubpkg{astatham/aaRon} may be downloaded directy from github using \texttt{devtools} if it needs to be installed or updated.
+
+<<install, eval=FALSE>>=
+library(devtools)
+install_github("astatham/aaRon")
+@
+
+
+Firstly we load the \R{} package \Githubpkg{astatham/aaRon}, and others required for the importation and analysis of NOMe-seq data.
+
+<<packages, message=FALSE, warning=FALSE>>=
+library(aaRon)
+library(data.table)
+library(BSgenome.Hsapiens.UCSC.hg19)
+@
+
+Next we create a \Robject{samples} \Rclass{data.frame} containing the names of the cell lines analysed, and which columns of the NOMe-seq tables contain methylation and coverage data.
+
+<<samples>>=
+samps <- c("HMEC", "MCF7", "PrEC", "PC3")
+samples <- data.frame(Sample=samps,
+                           C=paste0(samps, ".C"),
+                         cov=paste0(samps, ".cov"), stringsAsFactors=FALSE, row.names=samps)
+samples
+@
+
+Now we use the \Rfunction{fread} function from the \CRANpkg{data.table} package to read in the two NOMe-seq \file{bigTable}s (\Robject{GCH} containing the accessibility data and \Robject{WCG} containing methylation data) and convert them into \Rclass{GRanges} objects.
+
+<<loaddata>>=
+# Only load a subset of the GCH bigTable
+tab <- fread("bigTable.GCH.tsv", showProgress=FALSE, nrows=20000000)
+GCH <- GRanges(tab$chr, IRanges(tab$position, width=1))
+seqlengths(GCH) <- seqlengths(Hsapiens)[seqlevels(GCH)]
+values(GCH) <- as.data.frame(tab)[,-c(1:2)]
+head(GCH)
+
+tab <- fread("bigTable.WCG.tsv", showProgress=FALSE)
+WCG <- GRanges(tab$chr, IRanges(tab$position, width=1))
+seqlengths(WCG) <- seqlengths(Hsapiens)[seqlevels(WCG)]
+values(WCG) <- as.data.frame(tab)[,-c(1:2)]
+rm(tab)
+head(WCG)
+@
+
+As a check we confirm that all of the \Robject{C} and \Robject{cov} columns specified in \Robject{samples} are actually present in the \Robject{GCH} and \Robject{WCG} tables.
+
+<<samplecheck>>=
+all(c(samples$C, samples$cov) %in% names(values(GCH)))
+all(c(samples$C, samples$cov) %in% names(values(WCG)))
+@
+
+\subsection{Detection of nucleosome depleted regions (NDRs)}
+
+The function \Rfunction{findNDRs} implements a sliding window chi-squared test to search for regions of statistically significantly higher GCH methylation, indicating a nucleosome depleted region (NDR). The default parameters are to test windows of 100bp in size every 20bp along each chromosome and to return regions of a minimum 140bp in size with a p-value less than 10e-15; these settings can be modified to suit the requirements of different studies.
+
+\warning{This procedure may take an extended amount of computation time when run on a complete datatset, so verbose progress is printed.}
+
+<<findNDRs, cache=TRUE>>=
+NDRs <- findNDRs(GCH, samples)
+NDRs
+@
+
+\Rfunction{findNDRs} returns a \Rclass{GRangesList} of detected NDRs. We can explore the number of NDRs in each sample and the overlaps of NDRs between samples using \Rfunction{elementLengths} and \Rfunction{grangesVenn}, the results of which are displayed in \emph{Figure 1}.
+
+<<vennNDRs, fig.cap='Overlap of NDRs between the four cell lines'>>=
+elementLengths(NDRs)
+grangesVenn(NDRs)
+@
+
+\subsection{Plotting aggregate NOMe-seq profiles around regions of interest}
+
+\Githubpkg{astatham/aaRon} includes three functions for the plotting of averaged NOMe-seq profiles around regions of interest:
+
+\begin{itemize}
+  \item \Rfunction{methylationBiPlot} plots \textbf{both} methylation and accessibility profiles surrounding a \Rclass{GRanges} of supplied regions for a \textbf{single} sample.
+  \item \Rfunction{methylationPlotRegions} plots \textbf{either} methylation or accessibility profiles surrounding a \Rclass{GRangesList} of multiple sets of supplied regions for a \textbf{single} sample.
+  \item \Rfunction{methylationPlotSamples} plots \textbf{either} methylation or accessibility profiles surrounding a \Rclass{GRanges} of supplied regions for \textbf{multiple} samples.
+\end{itemize}
+
+
+\emph{Figure 2} is a \Rfunction{methylationBiPlot} showing both the methylation and accessibility profiles surrounding 51,385 unique transcription start sites (TSSs) as definied by the UCSC knownGene database.
+
+<<TSS, message=FALSE, warning=FALSE, fig.cap='HMEC Methylation and accessibility at knownGene TSSs'>>=
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+
+# Get the first transcribed base of every knownGene transcript
+TSS <- promoters(transcripts(TxDb.Hsapiens.UCSC.hg19.knownGene), 0, 1)
+# Remove redundant TSSs
+TSS <- unique(TSS)
+methylationBiPlot(GCH, WCG, TSS, samples["HMEC", ], up=3000, down=3000, addN=TRUE)
+@
+
+Next, let's use \Rfunction{methylationPlotRegions} to plot profiles around different classes of TSSs in MCF7. We can use the \Biocpkg{AnnotationHub} to obtain regions of the MCF7 genome that are marked by H3K4me3, a histone modification associated with active TSSs. We can then split the TSSs we just used into whether they are close to a MCF7 H3K4me3 peak (within 1kb) or not, and then plot the profiles of these two sets of TSSs on the same graph for a direct comparison. \emph{Figure 3} shows a comparison of accessibility and methylation between TSSs marked with H3K4me3 or unmarked, demonstrating the correlation between the H3K4me3 modification, loss of nucleosome occupancy and decreased DNA methylation.
+
+<<splitTSS, message=FALSE, warning=FALSE, out.width='.49\\linewidth', fig.show='hold', fig.cap='MCF7 TSS profiles split by H3K4me3 status', fig.subcap=c('Accessibility', 'Methylation')>>=
+library(AnnotationHub)
+ah = AnnotationHub()
+# download ENCODE MCF7 H3K4me3 peaks
+MCF7.K4me3 <-
+  ah$goldenpath.hg19.encodeDCC.wgEncodeUwHistone.wgEncodeUwHistoneMcf7H3k4me3StdPkRep1.narrowPeak_0.0.1.RData
+head(MCF7.K4me3)
+
+# Split TSSs by whether they are close (within 1000bp) of a H3K4me3 peak
+TSS.distance <- distanceToNearest(TSS, MCF7.K4me3)
+TSS.split <- split(TSS, ifelse(values(TSS.distance)$distance<1000, "H3K4me3", "Unmarked"))
+elementLengths(TSS.split)
+
+methylationPlotRegions(GCH, TSS.split, samples["MCF7", ], GpC=TRUE, up=3000, down=3000)
+methylationPlotRegions(WCG, TSS.split, samples["MCF7", ], GpC=FALSE, up=3000, down=3000)
+@
+
+Finally, let's use \Rfunction{methylationPlotSamples} to compare the profiles around a tissue specific transcription factor, estrogen receptor alpha (ER) which is overexpressed in MCF7 versus HMEC. We will first download the sites where ER has been shown to be bound in MCF7\cite{hurtado2011}, however this data was published using version hg18 of the human genome, and we must use liftOver to convert the co-ordinates to hg19. This procedure has already been performed and the resulting file \file{MCF7.ER.hg19.bed} included in this github repository.
+
+<<ERliftover, eval=FALSE>>=
+# Download UCSC liftover chain for hg18 to hg19 conversion
+download.file("http://hgdownload.cse.ucsc.edu/goldenPath/hg18/liftOver/hg18ToHg19.over.chain.gz",
+  "hg18ToHg19.over.chain.gz")
+
+# The chain needs to be gunzip'd prior to being imported
+library(R.utils)
+gunzip("hg18ToHg19.over.chain.gz")
+chain <- import.chain("hg18ToHg19.over.chain")
+
+# Import the published set of MCF7 ER peaks and convert coordinates to hg19
+MCF7.ER.hg18 <- import(
+  "http://www.carroll-lab.org.uk/FreshFiles/Data/Data_Sheet_3/MCF7_ER_binding.bed")
+MCF7.ER <- liftOver(MCF7.ER.hg18, chain)
+# Only keep sites that are not split during the liftOver (ie are of length 1)
+MCF7.ER <- unlist(MCF7.ER[elementLengths(MCF7.ER)==1])
+export(MCF7.ER, "MCF7.ER.hg19.bed")
+@
+
+\emph{Figure 4} displays the methylation and accessibility around these MCF7 ER binding sites in both HMEC and MCF7. As ER is overexpressed in MCF7, we would expect that these sites are much more accessible and show a decrease in DNA methylation compared to HMEC.
+
+<<ER, out.width='.49\\linewidth', fig.show='hold', fig.cap='MCF7 ER binding sites in both breast cell lines', fig.subcap=c('Accessibility', 'Methylation')>>=
+MCF7.ER <- import("MCF7.ER.hg19.bed")
+methylationPlotSamples(GCH, MCF7.ER, samples[c("HMEC", "MCF7"),], GpC=TRUE, up=3000, down=3000)
+methylationPlotSamples(WCG, MCF7.ER, samples[c("HMEC", "MCF7"),], GpC=FALSE, up=3000, down=3000)
+@
+
+\section{Conclusions}
+
+This manual details the step-by-step processing of raw NOMe-seq data into \file{bigTable}s, demonstrates some of the downstream analyses that can be performed using the \Githubpkg{astatham/aaRon} package and is a resource that facilitates the reproducible analysis and interpretation of NOMe-seq data.
+
+\section{Session info}
+<<sessionInfo, eval=TRUE>>=
+sessionInfo()
+@
+
+\bibliography{REFERENCES}
+
+\end{document}

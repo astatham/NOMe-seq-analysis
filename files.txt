@@ -1,0 +1,10 @@
+ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX%2FSRX539%2FSRX539640/SRR1282202/SRR1282202.sra HMEC_1.sra
+ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX%2FSRX539%2FSRX539640/SRR1282203/SRR1282203.sra HMEC_2.sra
+ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX%2FSRX539%2FSRX539641/SRR1282204/SRR1282204.sra MCF7_1.sra
+ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX%2FSRX539%2FSRX539641/SRR1282205/SRR1282205.sra MCF7_2.sra
+ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX%2FSRX539%2FSRX539642/SRR1282206/SRR1282206.sra PrEC_1.sra
+ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX%2FSRX539%2FSRX539642/SRR1282207/SRR1282207.sra PrEC_2.sra
+ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX%2FSRX539%2FSRX539642/SRR1282208/SRR1282208.sra PrEC_3.sra
+ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX%2FSRX539%2FSRX539643/SRR1282209/SRR1282209.sra PC3_1.sra
+ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX%2FSRX539%2FSRX539643/SRR1282210/SRR1282210.sra PC3_2.sra
+ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX%2FSRX539%2FSRX539643/SRR1282211/SRR1282211.sra PC3_3.sra
