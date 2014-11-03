@@ -245,8 +245,7 @@ samples
 Now we use the \Rfunction{fread} function from the \CRANpkg{data.table} package to read in the two NOMe-seq \file{bigTable}s (\Robject{GCH} containing the accessibility data and \Robject{WCG} containing methylation data) and convert them into \Rclass{GRanges} objects.
 
 <<loaddata>>=
-# Only load a subset of the GCH bigTable
-tab <- fread("bigTable.GCH.tsv", showProgress=FALSE, nrows=20000000)
+tab <- fread("bigTable.GCH.tsv", showProgress=FALSE)
 GCH <- GRanges(tab$chr, IRanges(tab$position, width=1))
 seqlengths(GCH) <- seqlengths(Hsapiens)[seqlevels(GCH)]
 values(GCH) <- as.data.frame(tab)[,-c(1:2)]
