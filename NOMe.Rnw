@@ -295,7 +295,7 @@ grangesVenn(NDRs)
 \end{itemize}
 
 
-\emph{Figure 2} is a \Rfunction{methylationBiPlot} showing both the methylation and accessibility profiles surrounding 51,385 unique transcription start sites (TSSs) as definied by the UCSC knownGene database.
+\emph{Figure 2} is a \Rfunction{methylationBiPlot} showing both the methylation and accessibility profiles surrounding 51,385 unique transcription start sites (TSSs) as defined by the UCSC knownGene database.
 
 <<TSS, message=FALSE, warning=FALSE, fig.cap='HMEC Methylation and accessibility at knownGene TSSs'>>=
 library(TxDb.Hsapiens.UCSC.hg19.knownGene)
@@ -304,7 +304,7 @@ library(TxDb.Hsapiens.UCSC.hg19.knownGene)
 TSS <- promoters(transcripts(TxDb.Hsapiens.UCSC.hg19.knownGene), 0, 1)
 # Remove redundant TSSs
 TSS <- unique(TSS)
-methylationBiPlot(GCH, WCG, TSS, samples["HMEC", ], up=3000, down=3000, addN=TRUE)
+methylationBiPlot(GCH, WCG, TSS, samples["HMEC", ], up=3000, down=3000, addN=FALSE)
 @
 
 Next, let's use \Rfunction{methylationPlotRegions} to plot profiles around different classes of TSSs in MCF7. We use the \Biocpkg{AnnotationHub} to obtain regions of the MCF7 genome that are marked by H3K4me3, a histone modification associated with active TSSs. We then split the TSSs into whether they are close to a MCF7 H3K4me3 peak (within 1kb) or not, and then plot the profiles of these two sets of TSSs on the same graph for a direct comparison. \emph{Figure 3} shows a comparison of accessibility and methylation between TSSs marked with H3K4me3 or unmarked, demonstrating the correlation between the H3K4me3 modification, loss of nucleosome occupancy and decreased DNA methylation.
@@ -322,8 +322,8 @@ TSS.distance <- distanceToNearest(TSS, MCF7.K4me3)
 TSS.split <- split(TSS, ifelse(values(TSS.distance)$distance<1000, "H3K4me3", "Unmarked"))
 elementLengths(TSS.split)
 
-methylationPlotRegions(GCH, TSS.split, samples["MCF7", ], GpC=TRUE, up=3000, down=3000)
-methylationPlotRegions(WCG, TSS.split, samples["MCF7", ], GpC=FALSE, up=3000, down=3000)
+methylationPlotRegions(GCH, TSS.split, samples["MCF7", ], GpC=TRUE, up=3000, down=3000, addN=FALSE)
+methylationPlotRegions(WCG, TSS.split, samples["MCF7", ], GpC=FALSE, up=3000, down=3000, addN=FALSE)
 @
 
 Finally, we will use \Rfunction{methylationPlotSamples} to compare the profiles around a tissue specific transcription factor - estrogen receptor alpha (ER) - which is overexpressed in MCF7 versus HMEC. We will first download the sites where ER has been shown to be bound in MCF7\cite{hurtado2011}, however this data was analysed using version hg18 of the human genome, so first we must use \Rfunction{liftOver} to convert the ER peak co-ordinates to hg19. This procedure has already been performed and the resulting file \file{MCF7.ER.hg19.bed} included in this github repository.
@@ -351,8 +351,8 @@ export(MCF7.ER, "MCF7.ER.hg19.bed")
 
 <<ER, out.width='.49\\linewidth', fig.show='hold', fig.cap='MCF7 ER binding sites in both breast cell lines', fig.subcap=c('Accessibility', 'Methylation')>>=
 MCF7.ER <- import("MCF7.ER.hg19.bed")
-methylationPlotSamples(GCH, MCF7.ER, samples[c("HMEC", "MCF7"),], GpC=TRUE, up=3000, down=3000)
-methylationPlotSamples(WCG, MCF7.ER, samples[c("HMEC", "MCF7"),], GpC=FALSE, up=3000, down=3000)
+methylationPlotSamples(GCH, MCF7.ER, samples[c("HMEC", "MCF7"),], GpC=TRUE, up=3000, down=3000, addN=FALSE)
+methylationPlotSamples(WCG, MCF7.ER, samples[c("HMEC", "MCF7"),], GpC=FALSE, up=3000, down=3000, addN=FALSE)
 @
 
 \section{Conclusions}
